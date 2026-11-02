@@ -1,0 +1,76 @@
+#!/bin/bash
+
+CONF=/etc/sitelimit.conf
+F=/var/lib/sitelimit
+HOSTS=/etc/hosts
+
+usage() {
+  echo "usage: sitelimit {status|reset}" >&2
+  exit 1
+}
+
+mmss() {
+  local s=$1
+  printf '%02d:%02d' $((s / 60)) $((s % 60))
+}
+
+read_counter() {
+  local site=$1 value
+  value=$(cat "$F/$site" 2>/dev/null) || value=0
+  value=${value//[^0-9]/}
+  value=${value:-0}
+  printf '%d' "$((10#$value))"
+}
+
+flush_dns() {
+  resolvectl flush-caches 2>/dev/null || nscd -i hosts 2>/dev/null || true
+}
+
+status() {
+  if [ ! -r "$CONF" ]; then
+    echo "sitelimit: cannot read $CONF" >&2
+    exit 1
+  fi
+  # shellcheck source=/dev/null
+  source "$CONF"
+  if ! declare -p RE >/dev/null 2>&1 || [ -z "${LIMIT:-}" ]; then
+    echo "sitelimit: RE and LIMIT must be set in $CONF" >&2
+    exit 1
+  fi
+  local limit
+  limit=$(mmss "$((10#$LIMIT))")
+  while IFS= read -r site; do
+    printf '%-4s %s / %s\n' "$site" "$(mmss "$(read_counter "$site")")" "$limit"
+  done < <(printf '%s\n' "${!RE[@]}" | sort)
+}
+
+reset() {
+  if [ "$(id -u)" -ne 0 ]; then
+    echo "sitelimit reset: must be run as root" >&2
+    exit 1
+  fi
+  if [ ! -r "$CONF" ]; then
+    echo "sitelimit: cannot read $CONF" >&2
+    exit 1
+  fi
+  # shellcheck source=/dev/null
+  source "$CONF"
+  if ! declare -p RE >/dev/null 2>&1; then
+    echo "sitelimit: RE must be declared in $CONF" >&2
+    exit 1
+  fi
+  mkdir -p "$F"
+  local site
+  for site in "${!RE[@]}"; do
+    printf '0\n' > "$F/$site"
+  done
+  sed -i '/#sitelimit/d' "$HOSTS"
+  flush_dns
+  echo "sitelimit: counters reset, sites unblocked"
+}
+
+case "${1:-}" in
+  status) status ;;
+  reset) reset ;;
+  *) usage ;;
+esac
