@@ -2,7 +2,7 @@
 
 CONF=/etc/sitelimit.conf
 F=/var/lib/sitelimit
-TICK=10
+TICK=1
 
 if [ ! -r "$CONF" ]; then
   echo "sitelimit-daemon: cannot read $CONF" >&2
@@ -12,8 +12,8 @@ fi
 # shellcheck source=/dev/null
 source "$CONF"
 
-if [ -z "${USER_NAME:-}" ] || [ -z "${LIMIT:-}" ] || [ -z "${BROWSERS:-}" ]; then
-  echo "sitelimit-daemon: USER_NAME, LIMIT and BROWSERS must be set in $CONF" >&2
+if [ -z "${USER_NAME:-}" ] || [ -z "${LIMIT:-}" ]; then
+  echo "sitelimit-daemon: USER_NAME and LIMIT must be set in $CONF" >&2
   exit 1
 fi
 
@@ -32,8 +32,12 @@ flush_dns() {
 }
 
 while true; do
-  today=$(date +%F)
-  if [ "$(cat "$F/day" 2>/dev/null)" != "$today" ]; then
+  printf -v today '%(%F)T' -1
+  stored=
+  if [ -r "$F/day" ]; then
+    read -r stored < "$F/day"
+  fi
+  if [ "$stored" != "$today" ]; then
     printf '%s\n' "$today" > "$F/day"
     for site in "${!RE[@]}"; do
       printf '0\n' > "$F/$site"
@@ -43,28 +47,31 @@ while true; do
   fi
 
   title=$(timeout 3 xdotool getactivewindow getwindowname 2>/dev/null)
-  class=$(timeout 3 xdotool getactivewindow getwindowclassname 2>/dev/null)
-
-  is_browser=0
-  class_lc=${class,,}
-  browsers_lc=${BROWSERS,,}
-  if [[ "$class_lc" =~ $browsers_lc ]]; then
-    is_browser=1
+  hosts=
+  if [ -r /etc/hosts ]; then
+    hosts=$(</etc/hosts)
   fi
 
   for site in "${!RE[@]}"; do
-    used=$(cat "$F/$site" 2>/dev/null || echo 0)
+    used=
+    if [ -r "$F/$site" ]; then
+      read -r used < "$F/$site"
+    fi
     used=${used//[^0-9]/}
     used=${used:-0}
-    if ((is_browser)) && [[ "$title" =~ ${RE[$site]} ]] && ((10#$used < LIMIT)); then
+
+    if [[ "$title" =~ ${RE[$site]} ]] && ((10#$used < LIMIT)); then
       used=$((10#$used + TICK))
       printf '%s\n' "$used" > "$F/$site"
     fi
-    if ((10#$used >= LIMIT)) && ! grep -q "#sitelimit-$site" /etc/hosts; then
+
+    marker="#sitelimit-$site"
+    if ((10#$used >= LIMIT)) && [[ $hosts != *"$marker"* ]]; then
       read -ra domains <<< "${DOMS[$site]}"
       for d in "${domains[@]}"; do
-        printf '0.0.0.0 %s #sitelimit-%s\n' "$d" "$site" >> /etc/hosts
+        printf '0.0.0.0 %s %s\n' "$d" "$marker" >> /etc/hosts
       done
+      hosts+=$'\n'"$marker"
       flush_dns
       timeout 3 wmctrl -l \
         | grep -E "${RE[$site]}" \

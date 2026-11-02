@@ -6,8 +6,8 @@ It watches your **active window**, counts the seconds spent on configured sites 
 
 ## How it works
 
-1. Every 10 seconds, reads the focused window's title and class (`xdotool`).
-2. If it is a browser window whose title matches a site, adds 10 seconds to that site's counter.
+1. Every second, reads the focused window's title (`xdotool`).
+2. If the title matches a site, adds 1 second to that site's counter — any app counts (browser, web app, or native).
 3. At the limit, appends `0.0.0.0 <domain> #sitelimit-<site>` lines to `/etc/hosts`, flushes DNS cache, and closes matching windows (`wmctrl`).
 4. On a new day, counters reset and the `#sitelimit` lines are removed.
 
@@ -58,7 +58,6 @@ Edit `/etc/sitelimit.conf`, then `sudo systemctl restart sitelimit`.
 ```bash
 USER_NAME=penguin          # owner of the X session
 LIMIT=1200                 # seconds per site per day
-BROWSERS="firefox|brave|chromium|google-chrome"   # window classes counted
 
 # window-title regex per site
 declare -A RE=( [fb]="Facebook|Messenger" [ig]="Instagram" [wa]="WhatsApp" )
@@ -99,7 +98,7 @@ sudo systemctl restart sitelimit
 ```
 
 Tips:
-- The `RE` value is a regex matched against the browser window title. Check what the title contains with `xdotool getactivewindow getwindowname`.
+- The `RE` value is a regex matched against the focused window title. Check what the title contains with `xdotool getactivewindow getwindowname`.
 - List every domain variant (`www.`, `m.`, etc.) in `DOMS`, otherwise some will stay reachable after the limit.
 
 ### Remove a site
@@ -130,7 +129,7 @@ Edit `LIMIT` (seconds). One limit applies to every site. Example: 30 minutes is 
 
 ## Troubleshooting
 
-- **Counters not rising:** check the title the daemon sees. Focus the browser tab and run `xdotool getactivewindow getwindowname`. The title must match the `RE` regex.
+- **Counters not rising:** check the title the daemon sees. Focus the window and run `xdotool getactivewindow getwindowname`. The title must match the `RE` regex.
 - **Check logs:** `journalctl -u sitelimit -n 30 --no-pager`
 - **Still opens after block:** the browser may use cached DNS or DNS-over-HTTPS. Disable DoH in the browser, or restart it.
 
