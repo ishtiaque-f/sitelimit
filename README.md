@@ -25,7 +25,7 @@ sudo apt install xdotool wmctrl
 ## Install
 
 ```
-git clone https://github.com/<you>/sitelimit.git
+git clone https://github.com/ishtiaque-f/sitelimit.git
 cd sitelimit
 sudo ./install.sh
 ```
@@ -71,7 +71,52 @@ declare -A DOMS=(
 )
 ```
 
-To add a site, add one entry to each array under the same key.
+### Add a site
+
+Add one entry to **both** arrays under the same short key. Example for YouTube:
+
+```bash
+declare -A RE=( [fb]="Facebook|Messenger" [ig]="Instagram" [wa]="WhatsApp" [yt]="YouTube" )
+
+declare -A DOMS=(
+  ...
+  [yt]="youtube.com www.youtube.com m.youtube.com"
+)
+```
+
+Or append it with one command:
+
+```
+sudo sed -i 's/\[wa\]="WhatsApp"/[wa]="WhatsApp" [yt]="YouTube"/' /etc/sitelimit.conf
+```
+
+(Then add the `[yt]=...` line inside `DOMS` by hand.)
+
+Restart to apply:
+
+```
+sudo systemctl restart sitelimit
+```
+
+Tips:
+- The `RE` value is a regex matched against the browser window title. Check what the title contains with `xdotool getactivewindow getwindowname`.
+- List every domain variant (`www.`, `m.`, etc.) in `DOMS`, otherwise some will stay reachable after the limit.
+
+### Remove a site
+
+1. Delete its entry from **both** `RE` and `DOMS` in `/etc/sitelimit.conf`.
+2. Unblock it and clear counters, then restart:
+
+```
+sudo sitelimit reset
+sudo systemctl restart sitelimit
+```
+
+Optional: remove the leftover counter file, e.g. `sudo rm /var/lib/sitelimit/yt`.
+
+### Change the limit
+
+Edit `LIMIT` (seconds). One limit applies to every site. Example: 30 minutes is `LIMIT=1800`.
 
 ## Files
 
